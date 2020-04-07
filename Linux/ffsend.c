@@ -25,6 +25,8 @@ const int cycles = 100;
 int video_stream_index = -1;
 int audio_stream_index = -1;
 
+static AVInputFormat *file_iformat;
+
 static inline double r2d(AVRational r) {
 	return r.den == 0 ? 0 : (double)r.num / (double)r.den;
 }
@@ -33,21 +35,21 @@ int main(int argc, char* argv[]) {
 
     av_log_set_flags(AV_LOG_INFO);
 
-	// int shmid = shmget(1234, sizeof(shared_data), 0666 | IPC_CREAT);
-	// if (shmid == -1) {
-	// 	AVLOGE("获取共享内存标识失败\n");
-	// 	return -1;
-	// }
-	// AVLOGI("获取共享标识成功:shmid = %d\n", shmid);
-	// void* shm = shmat(shmid, NULL, 0);
-	// if (shm == (void*)-1) {
-	// 	AVLOGE("映射共享内存地址失败\n");
-	// 	return -1;
-	// }
-	// AVLOGI("映射共享内存地址成功:%p\n", shm);
-	// shared_data* shdata = (shared_data*)shm;
+	int shmid = shmget(1234, sizeof(shared_data), 0666 | IPC_CREAT);
+	if (shmid == -1) {
+		AVLOGE("获取共享内存标识失败\n");
+		return -1;
+	}
+	AVLOGI("获取共享标识成功:shmid = %d\n", shmid);
+	void* shm = shmat(shmid, NULL, 0);
+	if (shm == (void*)-1) {
+		AVLOGE("映射共享内存地址失败\n");
+		return -1;
+	}
+	AVLOGI("映射共享内存地址成功:%p\n", shm);
+	shared_data* shdata = (shared_data*)shm;
 
-	// sleep(3);
+	sleep(3);
 
 	int ret = -1;
     if (argc < 2) {
@@ -63,6 +65,7 @@ int main(int argc, char* argv[]) {
 	av_dict_set(&options, "max_delay", "500", 0);
 	// 解封装上下文
 	AVFormatContext* fmt_ctx = NULL;
+	
 	ret = avformat_open_input(&fmt_ctx, filepath, 0, &options);
 	if (ret != 0) {
 		char buf[1024] = { 0 };
@@ -70,6 +73,19 @@ int main(int argc, char* argv[]) {
         AVLOGE("open input file format failed:%s\n", buf);
 		return -1;
 	}
+	
+    #if 0
+    unsigned char* iobuffer=(unsigned char *)av_malloc(512 * 320 * 3 / 2);
+    AVIOContext *avio =avio_alloc_context(iobuffer, 512 * 320 * 3 / 2, 0, NULL, fill_iobuffer, NULL, NULL);
+    fmt_ctx->pb=avio;
+    ret = avformat_open_input(&fmt_ctx, "", NULL, NULL);
+	if (ret != 0) {
+		char buf[1024] = { 0 };
+		av_strerror(ret, buf, sizeof(buf) - 1);
+        AVLOGE("open input file format failed:%s\n", buf);
+		return -1;
+	}
+	#endif
     AVLOGI("open input file format success\n\n");
 
     // 针对MPEG1和MPEGE2等没有Header的文件格式做处理
@@ -146,7 +162,7 @@ int main(int argc, char* argv[]) {
 	}
 	AVLOGI("open audio success\n\n");
 
-	FILE* file = fopen("/home/lihai/Desktop/xiaoli666/test/test.yuv", "wb");
+	// FILE* file = fopen("/home/lihai/Desktop/xiaoli666/test/test.yuv", "wb");
 	int index = 1;
 
 	// malloc AVPacket并初始化
@@ -211,15 +227,16 @@ int main(int argc, char* argv[]) {
 				memcpy(buf + offset, frame->data[1], offset / 4);
 				memcpy(buf + offset + offset / 4, frame->data[2], offset / 4);
 
-				fwrite(buf, offset * 3 /2 , 1, file);
+				// fwrite(buf, offset * 3 /2 , 1, file);
 
-				// printf("index = %d\n",index);
+				printf("index = %d\n",index);
 
 				// if (shdata->flag == 0) {
-				// 	shdata->frameIndex = index;
-				// 	memcpy(shdata->data, buf, offset * 3 /2);
-				// 	index++;
-				// 	shdata->flag = 1;
+					shdata->frameIndex = index;
+					memcpy(shdata->data, buf, offset * 3 / 2);
+					// index++;
+					shdata->flag = 1;
+					usleep(100000);
 				// }
 
 				index++;
@@ -232,7 +249,7 @@ int main(int argc, char* argv[]) {
 		}
 	}
 
-	fclose(file);
+	// fclose(file);
 
 	av_frame_free(&frame);
 	av_packet_free(&pkt);
